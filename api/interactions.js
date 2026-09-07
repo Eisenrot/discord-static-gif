@@ -1,12 +1,29 @@
 import { waitUntil } from '@vercel/functions';
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import sharp from 'sharp';
 import nacl from 'tweetnacl';
+import ffmpegPath from 'ffmpeg-static';
 
 const DISCORD_API = 'https://discord.com/api/v10';
-const MAX_SOURCE_BYTES = 50 * 1024 * 1024;
+const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 100_000_000;
-const MAX_DIMENSION = 4096;
-const MIN_DIMENSION = 128;
+const MAX_IMAGE_DIMENSION = 4096;
+const MAX_VIDEO_DIMENSION = 450;
+const MIN_IMAGE_DIMENSION = 128;
+const VIDEO_CONVERSION_TIMEOUT_MS = 25_000;
+const VIDEO_ATTEMPTS = [
+  { fps: 12, maxDimension: 450 },
+  { fps: 10, maxDimension: 450 },
+  { fps: 8, maxDimension: 400 },
+  { fps: 7, maxDimension: 350 },
+  { fps: 6, maxDimension: 350 },
+  { fps: 5, maxDimension: 300 },
+  { fps: 5, maxDimension: 250 },
+];
 
 function json(data, status = 200) {
   return Response.json(data, {
@@ -31,29 +48,53 @@ function verifyDiscordRequest(rawBody, signature, timestamp) {
 }
 
 function getAttachment(interaction) {
-  const option = interaction.data?.options?.find((item) => item.name === 'image');
+  const option = interaction.data?.options?.find(
+    (item) => item.name === 'media' || item.name === 'image',
+  );
   const id = option?.value;
   return id ? interaction.data?.resolved?.attachments?.[id] : null;
 }
 
-function outputName(filename = 'image') {
+function outputName(filename = 'media') {
   const base = filename
     .replace(/\.[^.]+$/, '')
     .replace(/[^a-zA-Z0-9._-]+/g, '_')
     .replace(/^_+|_+$/g, '');
 
-  return `${(base || 'image').slice(0, 80)}.gif`;
+  return `${(base || 'media').slice(0, 80)}.gif`;
+}
+
+function detectAttachmentKind(attachment) {
+  const contentType = attachment?.content_type?.toLowerCase() || '';
+  const filename = attachment?.filename?.toLowerCase() || '';
+
+  if (
+    contentType.startsWith('image/') ||
+    /\.(png|jpe?g|webp|bmp|tiff?|avif|heic|heif|gif)$/i.test(filename)
+  ) {
+    return 'image';
+  }
+
+  if (
+    contentType.startsWith('video/') ||
+    /\.(mp4|m4v|mov|webm|avi|mkv)$/i.test(filename)
+  ) {
+    return 'video';
+  }
+
+  return null;
 }
 
 async function downloadAttachment(attachment) {
   if (!attachment?.url) throw new Error('Discord did not provide an attachment URL.');
 
-  if (attachment.size > MAX_SOURCE_BYTES) {
-    throw new Error('That image is over GIFStar’s 50 MiB source limit.');
+  const kind = detectAttachmentKind(attachment);
+  if (!kind) {
+    throw new Error('Please upload an image or a short video file.');
   }
 
-  if (attachment.content_type && !attachment.content_type.startsWith('image/')) {
-    throw new Error('Please upload an image file.');
+  if (attachment.size > MAX_SOURCE_BYTES) {
+    throw new Error('That file is over GIFStar’s 25 MiB source limit.');
   }
 
   const response = await fetch(attachment.url, {
@@ -61,23 +102,23 @@ async function downloadAttachment(attachment) {
   });
 
   if (!response.ok) {
-    throw new Error(`Could not download the image from Discord (${response.status}).`);
+    throw new Error(`Could not download the file from Discord (${response.status}).`);
   }
 
   const contentLength = Number(response.headers.get('content-length') || 0);
   if (contentLength > MAX_SOURCE_BYTES) {
-    throw new Error('That image is over GIFStar’s 50 MiB source limit.');
+    throw new Error('That file is over GIFStar’s 25 MiB source limit.');
   }
 
   const buffer = Buffer.from(await response.arrayBuffer());
   if (buffer.length > MAX_SOURCE_BYTES) {
-    throw new Error('That image is over GIFStar’s 50 MiB source limit.');
+    throw new Error('That file is over GIFStar’s 25 MiB source limit.');
   }
 
-  return buffer;
+  return { buffer, kind };
 }
 
-async function renderGif(input, maxDimension, colours) {
+async function renderImageGif(input, maxDimension, colours) {
   return sharp(input, {
     animated: false,
     failOn: 'error',
@@ -98,7 +139,7 @@ async function renderGif(input, maxDimension, colours) {
     .toBuffer();
 }
 
-async function convertToGif(input, uploadLimit) {
+async function convertImageToGif(input, uploadLimit) {
   const metadata = await sharp(input, {
     animated: false,
     failOn: 'error',
@@ -111,15 +152,15 @@ async function convertToGif(input, uploadLimit) {
 
   let maxDimension = Math.min(
     Math.max(metadata.width, metadata.height),
-    MAX_DIMENSION,
+    MAX_IMAGE_DIMENSION,
   );
   let colours = 256;
   let lastBuffer;
 
   for (let attempt = 0; attempt < 7; attempt += 1) {
-    lastBuffer = await renderGif(
+    lastBuffer = await renderImageGif(
       input,
-      Math.max(MIN_DIMENSION, Math.round(maxDimension)),
+      Math.max(MIN_IMAGE_DIMENSION, Math.round(maxDimension)),
       colours,
     );
 
@@ -127,7 +168,7 @@ async function convertToGif(input, uploadLimit) {
 
     const ratio = Math.sqrt(uploadLimit / lastBuffer.length) * 0.9;
     maxDimension = Math.max(
-      MIN_DIMENSION,
+      MIN_IMAGE_DIMENSION,
       maxDimension * Math.min(0.9, ratio),
     );
 
@@ -141,9 +182,148 @@ async function convertToGif(input, uploadLimit) {
   );
 }
 
+function extnameOrDefault(filename = '') {
+  const ext = path.extname(filename).toLowerCase();
+  return ext || '.bin';
+}
+
+function runFfmpegToGif(inputPath, fps, maxDimension, maxOutputBytes) {
+  if (!ffmpegPath) {
+    throw new Error('Video conversion is unavailable right now.');
+  }
+
+  return new Promise((resolve, reject) => {
+    const filter = [
+      `[0:v]fps=${fps},scale=${maxDimension}:${maxDimension}:force_original_aspect_ratio=decrease:flags=lanczos,split[s0][s1]`,
+      '[s0]palettegen=stats_mode=diff[p]',
+      '[s1][p]paletteuse=dither=sierra2_4a[gif]',
+    ].join(';');
+
+    const args = [
+      '-v',
+      'error',
+      '-i',
+      inputPath,
+      '-an',
+      '-sn',
+      '-dn',
+      '-filter_complex',
+      filter,
+      '-map',
+      '[gif]',
+      '-loop',
+      '0',
+      '-f',
+      'gif',
+      'pipe:1',
+    ];
+
+    const child = spawn(ffmpegPath, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stdout = [];
+    const stderr = [];
+    let stdoutBytes = 0;
+    let settled = false;
+
+    const finishError = (message) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(new Error(message));
+    };
+
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL');
+      finishError('The video took too long to convert.');
+    }, VIDEO_CONVERSION_TIMEOUT_MS);
+
+    child.stdout.on('data', (chunk) => {
+      stdoutBytes += chunk.length;
+
+      if (stdoutBytes > maxOutputBytes) {
+        child.kill('SIGKILL');
+        const error = new Error('GIF output exceeds Discord’s upload limit.');
+        error.code = 'OUTPUT_TOO_LARGE';
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          reject(error);
+        }
+        return;
+      }
+
+      stdout.push(chunk);
+    });
+    child.stderr.on('data', (chunk) => stderr.push(chunk));
+    child.on('error', (error) => {
+      finishError(`Could not start FFmpeg: ${error.message}`);
+    });
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+
+      if (code === 0) {
+        resolve(Buffer.concat(stdout));
+        return;
+      }
+
+      const details = Buffer.concat(stderr).toString('utf8').trim();
+      reject(
+        new Error(
+          details
+            ? `FFmpeg failed: ${details.slice(0, 300)}`
+            : `FFmpeg exited with code ${code}.`,
+        ),
+      );
+    });
+  });
+}
+
+async function convertVideoToGif(input, filename, uploadLimit) {
+  const inputPath = path.join(
+    os.tmpdir(),
+    `gifstar-${randomUUID()}${extnameOrDefault(filename)}`,
+  );
+
+  await fs.writeFile(inputPath, input);
+
+  try {
+    let lastBuffer;
+
+    for (const attempt of VIDEO_ATTEMPTS) {
+      try {
+        lastBuffer = await runFfmpegToGif(
+          inputPath,
+          attempt.fps,
+          Math.min(MAX_VIDEO_DIMENSION, attempt.maxDimension),
+          uploadLimit,
+        );
+
+        if (lastBuffer.length <= uploadLimit) {
+          return lastBuffer;
+        }
+      } catch (error) {
+        if (error?.code === 'OUTPUT_TOO_LARGE') continue;
+        throw error;
+      }
+    }
+
+    if (lastBuffer?.length <= uploadLimit) return lastBuffer;
+
+    throw new Error(
+      'The converted GIF is still too large for Discord, even after reducing the video.',
+    );
+  } finally {
+    await fs.unlink(inputPath).catch(() => {});
+  }
+}
+
 async function editOriginal(
   interaction,
-  { content = '', file = null, filename = 'image.gif' },
+  { content = '', file = null, filename = 'media.gif' },
 ) {
   const url = `${DISCORD_API}/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`;
 
@@ -193,12 +373,16 @@ async function editOriginal(
 async function processGif(interaction) {
   try {
     const attachment = getAttachment(interaction);
-    if (!attachment) throw new Error('No image attachment was provided.');
+    if (!attachment) throw new Error('No media attachment was provided.');
 
-    const source = await downloadAttachment(attachment);
+    const { buffer: source, kind } = await downloadAttachment(attachment);
     const uploadLimit =
       Number(interaction.attachment_size_limit) || 10 * 1024 * 1024;
-    const gif = await convertToGif(source, uploadLimit);
+
+    const gif =
+      kind === 'video'
+        ? await convertVideoToGif(source, attachment.filename, uploadLimit)
+        : await convertImageToGif(source, uploadLimit);
 
     await editOriginal(interaction, {
       file: gif,
@@ -209,7 +393,7 @@ async function processGif(interaction) {
 
     try {
       await editOriginal(interaction, {
-        content: `GIFStar couldn't convert that image: ${
+        content: `GIFStar couldn't convert that file: ${
           error instanceof Error ? error.message : 'Unknown error.'
         }`,
       });

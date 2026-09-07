@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Privacy Policy for GIFStar, a Discord app that converts images into GIFs.">
+  <meta name="description" content="Privacy Policy for GIFStar, a Discord app that converts images and short videos into GIFs.">
   <title>GIFStar — Privacy Policy</title>
   <link rel="stylesheet" href="/legal.css">
 </head>
@@ -27,7 +27,7 @@
         <h1>Privacy Policy</h1>
         <p class="updated">Effective September 7, 2026</p>
         <div class="notice">
-          GIFStar is designed to be stateless. Submitted images are processed for conversion and are not intentionally saved by GIFStar to a database or object-storage service.
+          GIFStar is designed to avoid persistent storage. Submitted files are processed for conversion and are not intentionally saved by GIFStar to a database or object-storage service.
         </div>
       </div>
 
@@ -35,14 +35,14 @@
         <section>
           <h2>1. Overview</h2>
           <p>This Privacy Policy explains how GIFStar handles information when you use the application. GIFStar is an open-source Discord utility maintained by Eisenrot.</p>
-          <p>The application's purpose is narrow: receive an image you explicitly provide through Discord, convert it into a GIF, and return the resulting file to Discord.</p>
+          <p>The application's purpose is narrow: receive an image or short video file you explicitly provide through Discord, convert it into a GIF, and return the resulting file to Discord. Video audio, if present, is not kept in the GIF output.</p>
         </section>
 
         <section>
           <h2>2. Information GIFStar processes</h2>
           <p>When you invoke <code>/gifstar</code>, Discord sends an interaction request to GIFStar. Depending on the context, that request can include:</p>
           <ul>
-            <li>the image attachment you explicitly selected, including its Discord-hosted URL, filename, size, and content type;</li>
+            <li>the file attachment you explicitly selected, including its Discord-hosted URL, filename, size, and content type;</li>
             <li>Discord interaction metadata needed to authenticate and answer the request, such as application, interaction, user, channel, or server identifiers;</li>
             <li>the interaction token used to send the converted file back to Discord;</li>
             <li>technical request information that may be handled by the hosting infrastructure, such as timestamps, network information, request status, and basic runtime logs.</li>
@@ -55,79 +55,51 @@
           <p>The information above is used only as needed to:</p>
           <ul>
             <li>verify that a request genuinely came from Discord;</li>
-            <li>download and decode the image you chose;</li>
-            <li>convert the image into GIF format;</li>
+            <li>download and decode the file you chose;</li>
+            <li>convert the image or video into GIF format;</li>
             <li>respect Discord's attachment-size limit for the interaction;</li>
-            <li>return the result or an error message to Discord;</li>
-            <li>maintain security, reliability, and diagnose technical failures.</li>
+            <li>send the converted GIF back to Discord;</li>
+            <li>diagnose operational failures, abuse, and service errors.</li>
           </ul>
         </section>
 
         <section>
-          <h2>4. Image storage and retention</h2>
-          <p>GIFStar processes submitted image data in memory while carrying out the conversion. The application does <strong>not intentionally persist submitted images</strong> to an application database, filesystem archive, or object-storage bucket.</p>
-          <p>After the response is sent, GIFStar does not maintain its own copy of the source or converted image. Discord may retain attachments and messages according to Discord's own systems, settings, and policies.</p>
-          <p>Hosting and platform providers may temporarily process or retain limited technical logs in accordance with their own operational and security practices. GIFStar does not use those logs to build advertising profiles or track users across services.</p>
-        </section>
-
-        <section>
-          <h2>5. Logging</h2>
-          <p>GIFStar may emit technical error logs when a conversion fails or when Discord rejects a response. These logs are intended for debugging and service reliability. The application does not intentionally log the binary contents of submitted images.</p>
-        </section>
-
-        <section>
-          <h2>6. Sharing and third parties</h2>
-          <p>GIFStar does not sell personal information and does not share information with advertisers or data brokers.</p>
-          <p>The service necessarily relies on:</p>
+          <h2>4. Storage and retention</h2>
+          <p>GIFStar is intended to be stateless. Submitted files and generated GIFs are processed transiently while handling the request.</p>
           <ul>
-            <li><strong>Discord</strong>, which delivers interaction data and attachments and receives GIFStar's responses. See <a href="https://discord.com/privacy" rel="noopener noreferrer">Discord's Privacy Policy</a>.</li>
-            <li><strong>Vercel</strong>, which hosts and executes GIFStar's serverless application. See <a href="https://vercel.com/legal/privacy-policy" rel="noopener noreferrer">Vercel's Privacy Policy</a>.</li>
+            <li>For image conversion, GIFStar processes the file in memory.</li>
+            <li>For video conversion, GIFStar may create a temporary local file only for the duration of the conversion process and then delete it.</li>
+            <li>GIFStar does not intentionally store submitted files or converted GIFs in a database or long-term object storage.</li>
           </ul>
-          <p>Information may also be disclosed if required by applicable law or when reasonably necessary to protect users, the service, third parties, or legal rights.</p>
+          <p>However, infrastructure providers such as Discord and Vercel may temporarily process, cache, or log technical data as part of delivering the service.</p>
         </section>
 
         <section>
-          <h2>7. Cookies, analytics, and advertising</h2>
-          <p>GIFStar itself does not use advertising trackers, behavioral advertising, or a user analytics database. The legal pages do not intentionally set application cookies.</p>
-          <p>Discord and Vercel may process technical information under their own policies when you use their platforms or infrastructure.</p>
+          <h2>5. Sharing</h2>
+          <p>GIFStar does not sell your data. Information is shared only to the extent necessary for the service to function, including with Discord and Vercel as infrastructure providers.</p>
         </section>
 
         <section>
-          <h2>8. Security</h2>
-          <p>GIFStar verifies Discord interaction signatures before accepting commands and applies limits to source file size, decoded image size, dimensions, download time, and Discord output size. No internet service can guarantee absolute security, but the application is designed to minimize retained data and unnecessary access.</p>
+          <h2>6. Security</h2>
+          <p>GIFStar uses Discord's signed interaction flow to verify requests. No system can be guaranteed perfectly secure, but reasonable technical measures are used to reduce unnecessary data exposure.</p>
         </section>
 
         <section>
-          <h2>9. International processing</h2>
-          <p>Discord and Vercel operate infrastructure in multiple countries. As a result, information needed to provide the service may be processed outside your country of residence subject to the safeguards and terms used by those providers.</p>
+          <h2>7. Children's privacy</h2>
+          <p>GIFStar is not directed to children under the age required by applicable law and Discord's policies.</p>
         </section>
 
         <section>
-          <h2>10. Your choices and rights</h2>
-          <p>You can stop GIFStar from processing future information by simply not invoking the application or by removing it from your Discord account.</p>
-          <p>Because GIFStar does not maintain user accounts or an application database of submitted images, it generally has no persistent user record to retrieve or delete. If you believe information concerning you has been retained or you have a privacy request under applicable law, contact the maintainer through the project's <a href="https://github.com/Eisenrot/discord-static-gif" rel="noopener noreferrer">GitHub repository</a>. Requests relating to data held by Discord or Vercel should be directed to those providers.</p>
+          <h2>8. Changes to this policy</h2>
+          <p>This Privacy Policy may be updated from time to time. The updated version will be posted on this page with a revised effective date.</p>
         </section>
 
         <section>
-          <h2>11. Children's privacy</h2>
-          <p>GIFStar is not intended to expand access to Discord beyond Discord's own age and eligibility requirements. Do not use GIFStar if you are not permitted to use Discord in your jurisdiction.</p>
-        </section>
-
-        <section>
-          <h2>12. Changes to this policy</h2>
-          <p>This policy may be updated when GIFStar's functionality, hosting, or legal obligations change. The effective date at the top of this page will be updated when material revisions are published.</p>
-        </section>
-
-        <section>
-          <h2>13. Contact</h2>
-          <p>Privacy questions can be directed to the maintainer through the <a href="https://github.com/Eisenrot/discord-static-gif" rel="noopener noreferrer">GIFStar GitHub repository</a>.</p>
+          <h2>9. Contact</h2>
+          <p>The project repository is available at <a href="https://github.com/Eisenrot/discord-static-gif" rel="noopener noreferrer">github.com/Eisenrot/discord-static-gif</a>.</p>
         </section>
       </div>
     </main>
-
-    <footer>
-      GIFStar · Open-source Discord utility · <a href="/terms">Terms of Service</a>
-    </footer>
   </div>
 </body>
 </html>

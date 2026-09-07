@@ -12,15 +12,15 @@ if (!applicationId || !token) {
 const command = {
   name: 'gifstar',
   description:
-    'Turn a static image into a GIF you can save to Discord GIF Favorites.',
+    'Turn a static image or short video into a GIF you can save to Discord GIF Favorites.',
   type: 1,
   integration_types: [1],
   contexts: [0, 1, 2],
   options: [
     {
       type: 11,
-      name: 'image',
-      description: 'The image to turn into a GIF',
+      name: 'media',
+      description: 'The image or short video to turn into a GIF',
       required: true,
     },
   ],

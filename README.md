@@ -1,42 +1,3 @@
-# GIFStar
-
-GIFStar is a tiny user-installable Discord app that turns a static image attachment into a GIF, so you can add it to Discord's GIF Favorites instead of hunting down the original image again.
-
-Use it anywhere your user-installed app commands are allowed:
-
-```text
-/gifstar image:<attachment>
-```
-
-The app has no database, no Gateway connection, and no persistent image storage. Discord sends an interaction to a Vercel Function, the function downloads the attachment, converts it in memory, and edits the deferred interaction response with the resulting `.gif`.
-
-## How it works
-
-```text
-Discord /gifstar
-      |
-      | signed HTTP interaction
-      v
-Vercel /api/interactions
-      |
-      | verify Discord signature
-      | acknowledge immediately
-      | download attachment
-      | Sharp -> GIF
-      v
-Discord interaction response
-```
-
-GIFStar uses Vercel `waitUntil()` so Discord gets its acknowledgement immediately while the conversion continues after the HTTP response is returned.
-
-## Discord app setup
-
-1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications).
-2. Open **Installation** and enable **User Install**.
-3. For the User Install default scopes, add `applications.commands`.
-4. Copy the application's **Application ID** and **Public Key** from **General Information**.
-5. Open **Bot**, reset/copy the bot token, and keep it private. It is only needed to register the command; the deployed converter does not use it.
-
 Do not commit your bot token or any other Discord secret to this repository.
 
 ## Deploy to Vercel
@@ -90,23 +51,53 @@ After that, use the application's install link from the Developer Portal and cho
 ## Usage
 
 ```text
-/gifstar image:reaction.png
+/gifstar media:reaction.png
+/gifstar media:clip.mp4
 ```
 
-GIFStar will defer the command, convert the image, and replace the pending response with a GIF attachment. On Discord desktop/browser, use the star control on the GIF to add it to your GIF Favorites.
+GIFStar will defer the command, convert the image or short video, and replace the pending response with a GIF attachment. On Discord desktop/browser, use the star control on the GIF to add it to your GIF Favorites.
+
+## Supported input
+
+- Static images such as PNG, JPEG, WebP, BMP, TIFF, AVIF, HEIC and GIF-style image attachments.
+- Short video files such as MP4, M4V, MOV, WEBM, AVI and MKV, provided they are within the configured source-size limit.
 
 ## Conversion behavior
 
-- Accepts Discord image attachments that Sharp can decode.
-- Processes images entirely in memory.
-- Applies EXIF orientation automatically.
+- Accepts Discord attachments that Sharp or FFmpeg can decode.
+- Processes files entirely in memory, except for a temporary local file created only while FFmpeg converts video.
+- Applies EXIF orientation automatically for image inputs.
 - Produces a palette-based GIF with up to 256 colors.
-- Starts at the source resolution, capped at 4096 px on the longest edge.
-- If the GIF exceeds the invoking interaction's Discord attachment-size limit, GIFStar progressively resizes it and reduces the palette.
-- Source downloads are capped at 50 MiB and 100 million decoded pixels to avoid pathological image inputs.
-- Uses Discord's `attachment_size_limit` from the interaction, so Nitro/server upload limits are respected when available.
+- Respects Discord's `attachment_size_limit` from the interaction when deciding whether the output is small enough to upload.
 
-GIF is an indexed 256-color format, so photographs and gradients can lose some color fidelity compared with PNG/JPEG/WebP. The intended use is reaction images, memes, screenshots and other images you want available from Discord's GIF Favorites.
+### Source limits
+
+- Source image/video download limit: **25 MiB**.
+- Source downloads are capped at 100 million decoded pixels for image inputs to avoid pathological files.
+
+### Image conversion
+
+- Starts from the source resolution, capped at 4096 px on the longest edge.
+- If the GIF exceeds Discord's upload limit, GIFStar progressively resizes the image and reduces the palette.
+
+### Video conversion
+
+- Converts video clips to GIF with no audio.
+- Starts at a longest edge of **450 px**.
+- Uses a descending quality ladder to fit under Discord's upload limit, lowering FPS and resolution as needed.
+- Initial video conversion targets **12 FPS**, then progressively drops toward **5 FPS** and smaller dimensions if required to make the GIF uploadable.
+- There is no explicit hard duration limit, but unusually long clips may still fail if conversion takes too long, exhaust the function time budget, or if the resulting GIF cannot be reduced enough to fit Discord's upload limit.
+
+GIF is an indexed 256-color format, so photographs, gradients and longer video clips can lose quality compared with PNG/JPEG/WebP/MP4. The intended use is reaction images, memes, screenshots and short clips you want available from Discord's GIF Favorites.
+
+## Legal pages
+
+The live legal pages used for Discord verification are:
+
+- Terms of Service: `https://discord-static-gif.vercel.app/terms`
+- Privacy Policy: `https://discord-static-gif.vercel.app/privacy`
+
+If you materially change GIFStar's functionality or data handling, update those pages so they stay accurate.
 
 ## Environment variables
 
@@ -117,13 +108,3 @@ GIF is an indexed 256-color format, so photographs and gradients can lose some c
 | `DISCORD_BOT_TOKEN` | Local registration only | Authenticates the one-off command registration request |
 
 Only `DISCORD_PUBLIC_KEY` is required by the deployed Vercel Function.
-
-## Local checks
-
-```bash
-npm run check
-```
-
-## License
-
-MIT
